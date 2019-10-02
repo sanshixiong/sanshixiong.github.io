@@ -204,7 +204,7 @@
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
             
-            <a href="/2019/10/02/openresty/" class="post-title-link" itemprop="url">openresty</a>
+            <a href="/2019/10/02/openresty/" class="post-title-link" itemprop="url">openresty的一些问题记录</a>
           
         </h1>
 
@@ -219,8 +219,12 @@
                 
               
 
-              <time title="创建时间：2019-10-02 22:05:23" itemprop="dateCreated datePublished" datetime="2019-10-02T22:05:23+08:00">2019-10-02</time>
+              <time title="创建时间：2019-10-02 22:05:23 / 修改时间：22:06:23" itemprop="dateCreated datePublished" datetime="2019-10-02T22:05:23+08:00">2019-10-02</time>
             </span>
+          
+            
+
+            
           
 
           
@@ -234,7 +238,24 @@
     <div class="post-body" itemprop="articleBody">
 
       
-          
+          <p>前一段时间，后端的同学使用<code>openresty</code>来搭建web 服务，然后在项目部署的时候遇到了些问题，记录下。</p>
+<p>####1、css加载不出来的问题<br>访问页面时，html页面加载出来后，样式却没有加载出来。在chrome的<code>network</code>查看css文件加载正常。网上搜索了下，是css的<code>Content-Type</code>设置问题。正常下情况下应该为<code>text/css</code>，而此处是<code>text/plain</code>。<br>找到<code>ngnix</code>配置文件，在<code>http{}</code>中添加两行设置：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">include             /etc/nginx/mime.types;</span><br><span class="line">default_type        application/octet-stream;</span><br></pre></td></tr></table></figure>
+
+<p>然后重启下<code>openresty</code>即可（重启命令：<code>openresty -s reload</code>）。<br>疑问：这两行代码分别代表什么含义？第一行，好像是指定<code>MIME-types</code>配置文件，第二行好像是说明默认下载这个文件？</p>
+<p>补充：<br><a href="[https://developer.mozilla.org/zh-CN/docs/Web/Security/Securing_your_site/Configuring_server_MIME_types](https://developer.mozilla.org/zh-CN/docs/Web/Security/Securing_your_site/Configuring_server_MIME_types)">MIME-types</a>和<a href="[https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers/Content-Type](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers/Content-Type)">Content-Type</a><br>web服务器收到静态资源文件的请求时，在文件配置中找到对应的<code>MIME-types</code>，然后设置响应的<code>Content-Type</code>，告诉浏览器实际返回文件的内容类型。浏览器根据<code>Content-Type</code>值对文件进行不同的处理方式。</p>
+<p>####2、<code>vue-router</code>在<code>history</code>模式下刷新404<br><code>vue-router</code>有两种模式，即<code>hash</code>和<code>history</code>模式。<br><code>hash</code>模式下url中包含<code>#</code>，浏览器向服务器请求时会自动忽略<code>#</code>后面的值，不同路由下其<code>#</code>前面的url是一样的，所以刷新时都会指向<code>index.html</code>。<code>history</code>模式下url就像正常的url，但是由于是单页面应用，如果后端不做处理的话，在不同的路由下是找不到对应的页面的，这个时候就会报错<code>404</code>。<br>后端需要做的即是增加一个覆盖所有情况的候选资源：当url匹配不到任何静态资源，则应该返回同一个<code>index.html</code>页面。<br><code>vue-router</code>官方<code>ngnix</code>配置如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">location / &#123;</span><br><span class="line">  try_files $uri $uri/ /index.html;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>####3、同一域名下部署两个vue项目<br>因为当时整个平台是分两个项目a和b分别开发的，当部署的话，是需要两个项目部署到一起的，同时两个项目页面间可以正常的相互跳转。<br>将a项目的静态文件放在根目录下，b项目的静态文件先放到文件夹view中，期望直接访问url地址如：<code>http://127.0.0.1:8080</code>时，请求的<code>index.html</code>是根目录下a项目的<code>index.html</code>文件，而访问<code>http://127.0.0.1:8080/view/</code>时，请求的<code>index.html</code>是view文件下b项目的<code>index.html</code>文件。</p>
+<p>在<code>ngnix</code>的<code>server</code>下增加配置如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">location /view &#123;           </span><br><span class="line">   try_files $uri $uri/ /view/index.html;         </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这样访问不同的路径，即可访问到对应的项目。<br>另外，由于是两个单页应用应用，项目间跳转实际上是两个页面跳转，需要使用原生的<code>location</code>来进行页面间跳转。<br>如在b项目中设置跳转到a项目的url统一加上前缀<code>/toa</code>（当然这个前缀只是用于区分是否要跳转到a项目），然后在<code>main.js</code>设置路由钩子函数，针对不同路径进行不同的跳转操作：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">router.beforeEach((to, from, next) =&gt; &#123;</span><br><span class="line">  if (to.path.substr(0, 4) == &apos;/toa&apos;) &#123;  </span><br><span class="line">    window.location.pathname = to.path.replace(&apos;/toa&apos;, &apos;&apos;);  //如果是跳转到a项目，则更改location</span><br><span class="line">  &#125; else &#123;</span><br><span class="line">    next();  //若不是，则继续b项目内路由跳转</span><br><span class="line">  &#125;</span><br><span class="line">&#125;)</span><br></pre></td></tr></table></figure>
+
+<p>问题：项目内跳转是路由跳转，页面不会刷新，而两个项目间跳转，会有刷新情况出现。</p>
+
         
       
     </div>
